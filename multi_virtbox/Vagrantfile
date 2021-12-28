@@ -1,0 +1,50 @@
+# Below you can define specific parameters for each individual VM to be deployed by Vagrant.
+# ip = assign this static IP
+# box = which vagrant box should be deployed
+# osd = configure an additonal virtual disk
+# osdsize = size of the additional virtual disk in GB
+# the remaining parameters should be pretty much self explanatory :)
+
+nodes = [
+	{ :hostname => 'vm1', :ip => '192.168.2.240', :box => 'centos/stream8', :cpus => 1, :ram => 1024, :osd => 'yes', :osdsize => '20'},
+	{ :hostname => 'vm2', :ip => '192.168.2.241', :box => 'ubuntu/focal64', :cpus => 1, :ram => 1536, :osd => 'no' },
+]
+
+Vagrant.configure("2") do |config|
+  nodes.each do |node|
+    config.vm.define node[:hostname] do |nodeconfig| 
+	  nodeconfig.vm.box = node[:box]
+      nodeconfig.vm.hostname = node[:hostname]
+      nodeconfig.vm.network 'public_network', ip: node[:ip], netmask: '255.255.255.0'
+
+	  # here we declare variables to use the values defined above in the nodes section, in case no values are defined, we set a default value
+      memory = node[:ram] ? node[:ram] : 512;
+	  osddisksize = node[:osdsize] ? node[:osdsize] : 10;
+	  vcpus = node[:cpus] ? node[:cpus] : 1;
+	  
+	  nodeconfig.vm.provider :virtualbox do |vb|
+	    # here we customize our virtual box vm using the values from the variables
+		vb.customize ["modifyvm", :id, "--memory", memory.to_s]
+		vb.customize ["modifyvm", :id, "--cpus", vcpus.to_s]
+		
+        if node[:osd] == "yes"
+		  # If osd is set to 'yes' then add an additional virtual disk to IDE controller on port 1 device 0
+		  # In case you use different Vagrant Boxes, and you receive an error like Stderr: VBoxManage: error: Could not find a controller named 'IDE', this is caused by the fact that the Vagrant Box uses a different type of disk controller.
+		  # You can lookup the correct name and settings of the controller using the following vboxmanage commands
+		  # Show all VMs
+		  # VBoxManage list vms
+		  # Show the Storage of a particular VM
+		  # vboxmanage showvminfo 40aa7691-a75f-4e5a-99fb-135fc0295858 | findstr Storage
+		  osddisksizei = osddisksize.to_i
+		  osddisksizea = osddisksizei * 1000;
+		  vb.customize [ "createhd", "--filename", "disk_osd-#{node[:hostname]}", "--size", "#{osddisksizea}" ]
+		  vb.customize [ "storageattach", :id, "--storagectl", "IDE", "--port", 1, "--device", 0, "--type", "hdd", "--medium", "disk_osd-#{node[:hostname]}.vdi" ]
+        end
+		
+	  end
+	  
+    end
+    config.hostmanager.enabled = true
+    config.hostmanager.manage_guest = true
+  end
+end
