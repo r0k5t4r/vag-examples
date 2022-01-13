@@ -1,0 +1,1 @@
+echo "Congratulations. You just deploy your first Vagrant Box on ESXi. :)"

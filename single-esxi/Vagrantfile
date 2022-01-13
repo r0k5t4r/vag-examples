@@ -1,0 +1,38 @@
+#
+# Vagrant file for centos8stream
+#
+
+Vagrant.configure("2") do |config|
+  config.vm.box = 'bento/centos-stream-8'
+
+  # You can automatically sync / share the contents from the folder where your Vagrantfile resides
+  # I have disabled both methods, but on Windows you can e.g. use rsync
+  config.vm.synced_folder('.', '/vagrant', type: 'nfs', disabled: true)
+  config.vm.synced_folder('.', '/Vagrantfiles', type: 'rsync', disabled: true)
+
+  # A simple shell script
+  config.vm.provision "init1", type: "shell", path: "scripts/myscript.sh"
+
+  config.vm.provider :vmware_esxi do |esxi|
+    esxi.esxi_hostname = "192.168.2.10"
+    esxi.esxi_username = "root"
+	# Instead of using file: you can put your password here in plaintext or use prompt: to get prompted for it
+	esxi.esxi_password = 'file:'
+	# The VM Network is the very default network
+    esxi.esxi_virtual_network = ["VM Network"]
+    # This will be the name of the VM
+	esxi.guest_name = "centos8stream"
+    esxi.guest_memsize = "2048"
+    esxi.guest_numvcpus = "2"
+	# The free version of ESXi doesn't support resource pools so it must be /
+    esxi.esxi_resource_pool = "/"
+	# This would overwrite the VM in case it already exists. Use with caution!!!
+    esxi.local_allow_overwrite = 'false'
+	# This is the datastore where the VM will be stored.
+	esxi.esxi_disk_store = 'truenas_nvme_01'
+	# I use thin provisioning
+	esxi.guest_disk_type = 'thin'
+	# This makes the vagrant plugin more chatty and can be very helpful to analyze problems during deployment
+	esxi.debug = 'false'
+  end
+end

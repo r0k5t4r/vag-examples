@@ -1,0 +1,72 @@
+#!/usr/bin/ruby
+# Below you can define specific parameters for each individual VM to be deployed by Vagrant.
+# ip = assign this static IP
+# box = which vagrant box should be deployed
+# osd = configure an additonal virtual disk
+# osdsize = size of the additional virtual disk in GB
+# the remaining parameters should be pretty much self explanatory :)
+# run the following to fix vagrant ssh issue
+# set VAGRANT_PREFER_SYSTEM_BIN=0
+# https://stackoverflow.com/questions/51437693/permission-denied-with-vagrant
+
+nodes = [
+	{ :hostname => 'centos8stream-1', :ip => '192.168.0.230', :public_ip => '192.168.2.230', :box => 'bento/centos-stream-8', :cpus => 2, :ram => 1024, :osd => 'yes', :osdsize => 15, :hv => 'no', },
+	{ :hostname => 'centos8stream-2', :ip => '192.168.0.231', :public_ip => '192.168.2.231', :box => 'bento/centos-stream-8', :cpus => 2, :ram => 512,  :osd => 'no',  :osdsize => 20, :hv => 'no', },
+	{ :hostname => 'centos8stream-3', :ip => '192.168.0.232', :public_ip => '192.168.2.232', :box => 'bento/centos-stream-8', :cpus => 2, :ram => 512,  :osd => 'no',  :osdsize => 20, :hv => 'no', },
+]
+
+varDomain = "tuunixx.blogspot.com"
+varRepository = "files"
+
+Vagrant.configure("2") do |config|
+
+	# You can automatically sync / share the contents from the folder where your Vagrantfile resides
+	# I have disabled both methods, but on Windows you can e.g. use rsync
+	config.vm.synced_folder('.', '/vagrant', type: 'nfs', disabled: true)
+	config.vm.synced_folder('.', '/Vagrantfiles', type: 'rsync', disabled: false)
+	
+	# A simple shell script
+	config.vm.provision "init1", type: "shell", path: "scripts/myscript.sh"
+
+    nodes.each do |node|
+        config.vm.define node[:hostname] do |node_config|
+		
+		vcpus = node[:cpus] ? node[:cpus] : 1;
+		memory = node[:ram] ? node[:ram] : 512;
+		osddisksize = node[:osdsize] ? node[:osdsize] : 10;
+		vmbox = node[:box];
+		
+		node_config.vm.box = vmbox
+        node_config.vm.hostname = "#{node[:hostname]}.#{varDomain}"
+		node_config.vm.network "public_network", "ip": '0.0.0.0', auto_network: true			
+		node_config.vm.network 'public_network', ip: node[:public_ip], netmask: '255.255.255.0'
+		node_config.vm.post_up_message = "This is the start up message!"
+				
+		node_config.vm.provider :vmware_esxi do |esxi|
+			esxi.esxi_hostname = '192.168.2.10'
+			esxi.esxi_username = 'root'
+			# Instead of using file: you can put your password here in plaintext or use prompt: to get prompted for it
+			esxi.esxi_password = 'file:'			
+			# The free version of ESXi doesn't support resource pools so it must be /
+			esxi.esxi_resource_pool = "/"
+			# This is the datastore where the VM will be stored.
+			esxi.esxi_disk_store = 'truenas_nvme_01'
+			# The VM Network is the very default network, here we configure 3 virtual nics, two will be configured with static IPs and one interface will have no IP configured
+			esxi.esxi_virtual_network = ['VM Network','VM Network','VM Network']
+			esxi.guest_nic_type = 'vmxnet3'
+			esxi.guest_memsize = memory.to_s
+			esxi.guest_numvcpus = vcpus.to_s
+			# I use thin provisioning
+			esxi.guest_disk_type = 'thin'
+			# This would overwrite the VMs in case they already exist. Use with caution!!!
+			esxi.local_allow_overwrite = 'True'
+			# This makes the vagrant plugin more chatty and can be very helpful to analyze problems during deployment
+			esxi.debug = 'false'
+			if node[:hv] == "yes"
+				esxi.guest_custom_vmx_settings = [['vhv.enable','TRUE']]
+			end #if node[:hv] == "yes"
+		end #node_config.vm.provider :vmware_esxi do |esxi|
+			
+		end #config.vm.define node[:hostname] do |node_config|
+	end #nodes.each do |node|
+end #Vagrant.configure("2") do |config|
